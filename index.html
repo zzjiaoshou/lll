@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>理货大师 Tidy Master</title>
+<link rel="icon" href="assets/ui/logo.svg" type="image/svg+xml">
+<style>
+  :root{
+    --bg:#FFF6E9; --wood:#D9A066; --wood-dk:#B07B4F;
+    --primary:#FF8A5C; --accent:#FFD166; --ok:#7BC96F;
+    --warn:#EF6461; --text:#4A3F35;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+  }
+  #app{width:640px;max-width:100vw;height:100vh;max-height:900px;display:flex;flex-direction:column;position:relative}
+
+  /* ---------- 顶栏 ---------- */
+  #topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;flex-shrink:0}
+  #lvname{font-weight:700;font-size:16px;white-space:nowrap}
+  #timerwrap{flex:1;height:16px;background:#f0e2cf;border-radius:8px;overflow:hidden;position:relative}
+  #timerbar{height:100%;width:100%;background:var(--ok);border-radius:8px;transition:width .3s linear}
+  #timerbar.danger{background:var(--warn);animation:pulse .6s infinite alternate}
+  @keyframes pulse{from{opacity:1}to{opacity:.55}}
+  #timeleft{position:absolute;inset:0;text-align:center;font-size:11px;line-height:16px;font-weight:700;color:var(--text)}
+  #score{font-weight:700;font-size:16px;min-width:70px;text-align:right}
+  .iconbtn{width:38px;height:38px;border:none;border-radius:10px;background:var(--primary);color:#fff;
+    font-size:17px;cursor:pointer;box-shadow:0 2px 0 var(--wood-dk);transition:transform .05s;
+    display:flex;align-items:center;justify-content:center;padding:0}
+  .iconbtn:active{transform:translateY(2px);box-shadow:none}
+  .iconbtn img{width:20px;height:20px}
+  .iconbtn svg{width:20px;height:20px;fill:#fff}
+
+  /* ---------- 货架区 ---------- */
+  #shelf{flex:1;position:relative;margin:0 12px;overflow:hidden;border-radius:14px}
+  .board{position:absolute;left:0;right:0;height:16px;background:var(--wood);border-radius:6px;
+    box-shadow:0 4px 0 var(--wood-dk)}
+  .item{
+    position:absolute;width:62px;height:62px;display:flex;align-items:center;justify-content:center;
+    cursor:grab;user-select:none;touch-action:none;
+    background:#fff;border-radius:14px;border:3px solid #eee2d0;
+    box-shadow:0 4px 8px rgba(74,63,53,.18);
+    transition:transform .18s cubic-bezier(.34,1.56,.64,1),opacity .18s;
+    will-change:left,top;
+  }
+  .item img{width:46px;height:46px;pointer-events:none;-webkit-user-drag:none}
+  .item.pickable:hover{transform:translateY(-3px) scale(1.04)}
+  .item.blocked{filter:brightness(.82) saturate(.75);cursor:default}
+  .item.blocked::after{content:"";position:absolute;inset:0;border-radius:11px;background:rgba(74,63,53,.18)}
+  .item.fly{pointer-events:none;z-index:999!important}
+  .item.dragging{position:fixed;pointer-events:none;z-index:2000!important;cursor:grabbing;
+    transform:scale(1.12) rotate(3deg)!important;box-shadow:0 10px 22px rgba(74,63,53,.35);
+    opacity:1;transition:none!important}
+  .item.no-drop{filter:grayscale(.6)}
+  .item.shake{animation:shake .3s}
+  @keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-4deg)}75%{transform:rotate(4deg)}}
+  #combo{
+    position:absolute;top:42%;left:50%;transform:translate(-50%,-50%) scale(0);
+    font-size:34px;font-weight:800;color:var(--primary);text-shadow:0 2px 0 #fff,0 0 14px var(--accent);
+    pointer-events:none;z-index:1000;
+  }
+  #combo.show{animation:comboPop .7s ease-out}
+  @keyframes comboPop{0%{transform:translate(-50%,-50%) scale(0)}30%{transform:translate(-50%,-50%) scale(1.15)}70%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-60%) scale(1);opacity:0}}
+  #penalty{position:absolute;top:52px;right:16px;font-size:22px;font-weight:800;color:var(--warn);
+    pointer-events:none;z-index:1001;opacity:0}
+  #penalty.show{animation:penaltyPop .9s ease-out}
+  @keyframes penaltyPop{0%{opacity:0;transform:translateY(6px)}20%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+
+  /* ---------- 收纳筐 ---------- */
+  #trays{display:flex;gap:14px;justify-content:center;padding:14px;flex-wrap:wrap;flex-shrink:0}
+  .tray{width:110px;height:86px;background:var(--wood);border-radius:12px;position:relative;
+    box-shadow:0 5px 0 var(--wood-dk);padding:8px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:4px;transition:transform .1s}
+  .tray .tag{font-size:14px;background:#fff;border-radius:8px;padding:2px 8px;
+    font-weight:700;color:var(--text);white-space:nowrap;display:flex;align-items:center;gap:3px}
+  .tray .tag img{width:18px;height:18px}
+  .tray .cnt{font-size:12px;color:#fff;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .tray .fill{position:absolute;left:0;bottom:0;height:6px;background:var(--accent);
+    border-radius:0 3px 3px 0;transition:width .25s}
+  .tray.hover{transform:scale(1.12);outline:3px solid var(--accent)}
+  .tray.target{animation:targetGlow 1s infinite alternate}
+  @keyframes targetGlow{from{box-shadow:0 5px 0 var(--wood-dk)}to{box-shadow:0 5px 0 var(--wood-dk),0 0 14px 4px var(--accent)}}
+  .tray.wrong{animation:trayWrong .35s}
+  @keyframes trayWrong{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+  .tray.full{animation:trayFull .4s}
+  @keyframes trayFull{0%{transform:scale(1)}40%{transform:scale(1.2)}100%{transform:scale(1)}}
+
+  /* ---------- 弹窗 ---------- */
+  .overlay{position:absolute;inset:0;background:rgba(74,63,53,.55);display:flex;align-items:center;
+    justify-content:center;z-index:2000;border-radius:14px}
+  .panel{background:var(--bg);border-radius:20px;padding:28px 36px;text-align:center;min-width:300px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .panel h2{margin-bottom:10px;font-size:24px}
+  .stars{font-size:36px;margin:8px 0;letter-spacing:4px;color:var(--accent)}
+  .stars .off{opacity:.25}
+  .panel p{margin:6px 0;font-size:15px}
+  .bigbtn{margin:14px 4px 0;padding:12px 30px;border:none;border-radius:12px;background:var(--primary);
+    color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 3px 0 var(--wood-dk)}
+  .bigbtn:active{transform:translateY(2px);box-shadow:none}
+  .bigbtn.ghost{background:#fff;color:var(--text);box-shadow:0 3px 0 #d8c9b4}
+
+  /* 关卡选择 */
+  #levelgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
+  .lv{height:52px;border:none;border-radius:12px;background:#fff;font-size:16px;font-weight:700;cursor:pointer;
+    color:var(--text);box-shadow:0 3px 0 #d8c9b4}
+  .lv small{display:block;font-size:11px}
+  .lv.locked{opacity:.4;cursor:not-allowed}
+  .lv.done{background:var(--accent)}
+  #menu,#game{display:flex;flex-direction:column;height:100%}
+  .hidden{display:none!important}
+  #menu .logo{width:96px;height:96px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- 关卡选择 -->
+  <div id="menu">
+    <div style="text-align:center;padding-top:40px">
+      <img class="logo" src="assets/ui/logo.svg" alt="理货大师">
+      <h1 style="margin:8px 0 4px">理货大师</h1>
+      <p style="color:#8a7a68">把随机摆放的货物拖进<b>对应类别</b>的大筐里，放错扣 10 秒！</p>
+      <div id="levelgrid"></div>
+    </div>
+  </div>
+
+  <!-- 游戏 -->
+  <div id="game" class="hidden">
+    <div id="topbar">
+      <span id="lvname">关卡 1</span>
+      <div id="timerwrap"><div id="timerbar"></div><span id="timeleft"></span></div>
+      <span id="score">0</span>
+      <button class="iconbtn" id="btnSound">🔊</button>
+      <button class="iconbtn" id="btnQuit">✕</button>
+    </div>
+    <div id="shelf">
+      <div id="combo"></div>
+      <div id="penalty">-10s</div>
+    </div>
+    <div id="trays"></div>
+  </div>
+
+  <div class="overlay hidden" id="resultOverlay"><div class="panel" id="resultPanel"></div></div>
+</div>
+
+<script>
+/* ================= 关卡配置（来源：GDD 5.3） ================= */
+const LEVELS=[
+ {n:1, items:15, cats:3, time:90},
+ {n:2, items:20, cats:4, time:90},
+ {n:3, items:25, cats:5, time:90},
+ {n:4, items:25, cats:5, time:75},
+ {n:5, items:30, cats:5, time:75},
+ {n:6, items:30, cats:6, time:80},
+ {n:7, items:35, cats:6, time:80},
+ {n:8, items:35, cats:7, time:90},
+ {n:9, items:40, cats:7, time:90},
+ {n:10,items:40, cats:8, time:100},
+];
+
+/* 大类（筐）：水果 / 蔬菜 / 饮料 —— 筐上只写类别 */
+const CLASSES=[
+  {n:"水果",icon:"assets/ui/cat-fruit.svg"},
+  {n:"蔬菜",icon:"assets/ui/cat-veg.svg"},
+  {n:"饮料",icon:"assets/ui/cat-drink.svg"},
+];
+/* 具体商品（第1关即含三大类各1种，之后递增） */
+const KINDS=[
+  {img:"assets/items/apple.svg",   cls:0},
+  {img:"assets/items/carrot.svg",  cls:1},
+  {img:"assets/items/juice.svg",   cls:2},
+  {img:"assets/items/banana.svg",  cls:0},
+  {img:"assets/items/tomato.svg",  cls:1},
+  {img:"assets/items/milk.svg",    cls:2},
+  {img:"assets/items/grape.svg",   cls:0},
+  {img:"assets/items/broccoli.svg",cls:1},
+];
+const PER_KIND=5, BASE_SCORE=20, COMBO_UNIT=10, TIME_UNIT=5, WRONG_PENALTY=10;
+
+/* ================= 音效（WebAudio 合成，无外部资源） ================= */
+let AC=null, muted=localStorage.getItem("tm_muted")==="1";
+function ac(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function tone(freq,dur=.12,type="sine",vol=.18,when=0){
+  if(muted) return;
+  const c=ac(),o=c.createOscillator(),g=c.createGain(),t=c.currentTime+when;
+  o.type=type;o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur);
+}
+const SFX={
+  pick:c=>tone(440*Math.pow(2,Math.min(c,12)/12),.1,"triangle"),
+  drop:()=>tone(720,.12,"sine",.12),
+  bad:()=>tone(160,.15,"square",.1),
+  clear:()=>{tone(523,.1);tone(659,.1,"sine",.15,.08);tone(784,.14,"sine",.15,.16)},
+  win:()=>{[523,659,784,1046].forEach((f,i)=>tone(f,.22,"triangle",.16,i*.12))},
+  lose:()=>{tone(330,.25,"sine",.14);tone(247,.35,"sine",.14,.2)},
+  tick:()=>{tone(880,.07,"square",.09);tone(880,.07,"square",.09,.12)},
+  ten:()=>{[880,784,660,523].forEach((f,i)=>tone(f,.16,"triangle",.2,i*.14))},
+};
+
+/* ================= 状态 ================= */
+let cur=null, drag=null;
+let save=JSON.parse(localStorage.getItem("tm_save")||"{}");
+save.unlock=save.unlock||1;
+
+const $=id=>document.getElementById(id);
+const shelf=$("shelf"), traysEl=$("trays");
+
+function buildMenu(){
+  const g=$("levelgrid"); g.innerHTML="";
+  LEVELS.forEach(L=>{
+    const b=document.createElement("button");
+    const locked=L.n>save.unlock;
+    b.className="lv"+(locked?" locked":"")+(save["s"+L.n]?" done":"");
+    b.innerHTML=locked?"🔒":`第${L.n}关<small>${save["s"+L.n]?"★".repeat(save["s"+L.n]):"未通关"}</small>`;
+    if(!locked) b.onclick=()=>startLevel(L.n-1);
+    g.appendChild(b);
+  });
+}
+
+function startLevel(idx){
+  const L=LEVELS[idx];
+  cur={idx,L,kinds:[],items:[],combo:0,score:0,time:L.time,over:false,clsGot:{},clsTotal:{}};
+  $("lvname").textContent=`关卡 ${L.n}`;
+  $("score").textContent="0";
+  $("menu").classList.add("hidden"); $("game").classList.remove("hidden");
+  $("resultOverlay").classList.add("hidden");
+  shelf.querySelectorAll(".item,.board").forEach(e=>e.remove());
+  traysEl.innerHTML="";
+
+  // 货架层板：1-3 关两排，4 关起三排
+  const rows=L.n>=4?3:2, sw=shelf.clientWidth, sh=shelf.clientHeight;
+  const rowY=i=>sh*(i+0.45)/rows - 10;
+  for(let i=0;i<rows;i++){
+    const b=document.createElement("div"); b.className="board";
+    b.style.top=(rowY(i)+56)+"px"; shelf.appendChild(b);
+  }
+
+  // 本关商品种类
+  const kinds=KINDS.slice(0,L.cats);
+  cur.kinds=kinds;
+  let pool=[];
+  kinds.forEach((k,ki)=>{ for(let m=0;m<PER_KIND;m++) pool.push(ki); });
+  pool.sort(()=>Math.random()-.5);
+
+  /* 槽位 + 受控随机堆叠，保证不会有商品被完全盖住 */
+  const rowsItems=[[],[],[]];
+  pool.forEach((ki,i)=>rowsItems[i%rows].push(ki));
+  const items=[];
+  const margin=26, usable=sw-margin*2-62, maxLayer=rows;
+  rowsItems.slice(0,rows).forEach((rowKinds,row)=>{
+    const cnt=rowKinds.length;
+    rowKinds.forEach((ki,idx)=>{
+      const slotW=cnt>1?usable/(cnt-1):0;
+      const layer=Math.floor(Math.random()*maxLayer);
+      const overlap=Math.random()<0.45 ? (Math.random()*18-9) : (Math.random()*10-5);
+      items.push({kind:ki,row,layer,
+        x:margin+idx*slotW+overlap,
+        y:rowY(row)-layer*9, el:null, picked:false});
+    });
+  });
+  cur.clsTotal={};
+  kinds.forEach(k=>cur.clsTotal[k.cls]=(cur.clsTotal[k.cls]||0)+PER_KIND);
+
+  // 渲染（下层先画）
+  items.sort((a,b)=>a.layer-b.layer);
+  items.forEach(it=>{
+    const el=document.createElement("div");
+    el.className="item";
+    el.innerHTML=`<img src="${kinds[it.kind].img}" alt="">`;
+    el.style.left=it.x+"px"; el.style.top=it.y+"px"; el.style.zIndex=10+it.layer;
+    it.el=el; shelf.appendChild(el);
+    el.addEventListener("pointerdown",e=>{e.preventDefault();startDrag(it,e)});
+  });
+  cur.items=items;
+
+  // 大类收纳筐：只标类别
+  const clsSet=[...new Set(kinds.map(k=>k.cls))];
+  clsSet.forEach(c=>{
+    const t=document.createElement("div"); t.className="tray"; t.id="trayC"+c;
+    t.innerHTML=`<span class="tag"><img src="${CLASSES[c].icon}" alt="">${CLASSES[c].n}区</span>`+
+      `<span class="cnt">0/${cur.clsTotal[c]}</span><span class="fill" style="width:0%"></span>`;
+    traysEl.appendChild(t);
+    cur.clsGot[c]=0;
+  });
+  refreshPickable();
+  if(cur.timer) clearInterval(cur.timer);
+  cur.timer=setInterval(tick,1000);
+  updateTimer();
+}
+
+/* 遮挡判定：与更高层商品重叠 >30% 即被挡住 */
+function rectsOverlap(a,b){
+  const W=62;
+  const ox=Math.max(0,Math.min(a.x+W,b.x+W)-Math.max(a.x,b.x));
+  const oy=Math.max(0,Math.min(a.y+W,b.y+W)-Math.max(a.y,b.y));
+  return ox*oy > W*W*0.30;
+}
+function refreshPickable(){
+  const live=cur.items.filter(i=>!i.picked);
+  live.forEach(i=>{
+    const blocked=live.some(o=>o!==i && o.layer>i.layer && rectsOverlap(o,i));
+    i.blocked=blocked;
+    i.el.classList.toggle("blocked",blocked);
+    i.el.classList.toggle("pickable",!blocked);
+  });
+}
+
+/* ---------- 拖拽 ---------- */
+function startDrag(it,e){
+  if(cur.over||it.picked) return;
+  if(it.blocked){
+    it.el.classList.remove("shake"); void it.el.offsetWidth; it.el.classList.add("shake");
+    SFX.bad(); cur.combo=0; return;
+  }
+  const r=it.el.getBoundingClientRect();
+  drag={it,el:it.el,offX:e.clientX-r.left,offY:e.clientY-r.top};
+  it.el.classList.add("dragging");
+  it.el.style.left=(e.clientX-drag.offX)+"px";
+  it.el.style.top=(e.clientY-drag.offY)+"px";
+  $("trayC"+cur.kinds[it.kind].cls).classList.add("target");
+  SFX.pick(cur.combo);
+  window.addEventListener("pointermove",onDragMove);
+  window.addEventListener("pointerup",onDragEnd,{once:true});
+}
+function onDragMove(e){
+  if(!drag) return;
+  drag.el.style.left=(e.clientX-drag.offX)+"px";
+  drag.el.style.top=(e.clientY-drag.offY)+"px";
+  document.querySelectorAll(".tray.hover").forEach(t=>t.classList.remove("hover"));
+  const t=trayAt(e.clientX,e.clientY);
+  if(t) t.classList.add("hover");
+}
+function trayAt(x,y){
+  const trays=document.querySelectorAll(".tray");
+  for(const t of trays){
+    const r=t.getBoundingClientRect();
+    if(x>=r.left-8&&x<=r.right+8&&y>=r.top-8&&y<=r.bottom+8) return t;
+  }
+  return null;
+}
+function onDragEnd(e){
+  window.removeEventListener("pointermove",onDragMove);
+  document.querySelectorAll(".tray.hover").forEach(t=>t.classList.remove("hover"));
+  if(!drag) return;
+  const {it,el}=drag; drag=null;
+  document.querySelectorAll(".tray.target").forEach(t=>t.classList.remove("target"));
+  el.classList.remove("dragging");
+  const t=trayAt(e.clientX,e.clientY);
+  if(!t){ returnToShelf(it); return; }
+
+  const correctCls=cur.kinds[it.kind].cls;
+  if(+t.id.slice(5)===correctCls){
+    acceptItem(it,t);
+  }else{
+    cur.time=Math.max(0,cur.time-WRONG_PENALTY);
+    cur.combo=0;
+    SFX.bad(); setTimeout(()=>SFX.lose(),120);
+    t.classList.add("wrong"); setTimeout(()=>t.classList.remove("wrong"),350);
+    const p=$("penalty"); p.textContent=`-${WRONG_PENALTY}s`;
+    p.classList.remove("show"); void p.offsetWidth; p.classList.add("show");
+    updateTimer();
+    if(cur.time<=10) $("timerbar").classList.add("danger");
+    el.classList.add("no-drop"); setTimeout(()=>el.classList.remove("no-drop"),350);
+    returnToShelf(it);
+    if(cur.time<=0){ endGame(false); return; }
+  }
+}
+function returnToShelf(it){
+  it.el.style.transition="left .25s,top .25s";
+  it.el.style.left=it.x+"px"; it.el.style.top=it.y+"px";
+  setTimeout(()=>{it.el.style.transition="";},260);
+}
+function acceptItem(it,tray){
+  it.picked=true; cur.combo++;
+  cur.score+=BASE_SCORE+cur.combo*COMBO_UNIT;
+  SFX.pick(cur.combo);
+  if(cur.combo>=5) showCombo(cur.combo);
+
+  const r1=it.el.getBoundingClientRect(), r2=tray.getBoundingClientRect();
+  it.el.classList.add("fly");
+  it.el.style.zIndex=999;
+  it.el.style.left=(r2.left-r1.left+r2.width/2-31)+"px";
+  it.el.style.top=(r2.top-r1.top)+"px";
+  it.el.style.transform="scale(.3)"; it.el.style.opacity="0";
+  setTimeout(()=>it.el.remove(),220);
+
+  const cls=cur.kinds[it.kind].cls;
+  cur.clsGot[cls]++;
+  tray.querySelector(".cnt").textContent=`${cur.clsGot[cls]}/${cur.clsTotal[cls]}`;
+  tray.querySelector(".fill").style.width=(cur.clsGot[cls]/cur.clsTotal[cls]*100)+"%";
+  if(cur.clsGot[cls]===cur.clsTotal[cls]){
+    tray.classList.add("full"); SFX.clear();
+    setTimeout(()=>tray.classList.remove("full"),400);
+  }
+  $("score").textContent=cur.score;
+  refreshPickable();
+
+  if(cur.items.every(i=>i.picked)) endGame(true);
+}
+
+function showCombo(n){
+  const c=$("combo"); c.textContent=`Combo ×${n}!`;
+  c.classList.remove("show"); void c.offsetWidth; c.classList.add("show");
+}
+
+function tick(){
+  if(cur.over) return;
+  cur.time--;
+  updateTimer();
+  if(cur.time===10){SFX.ten();$("timerbar").classList.add("danger");}
+  else if(cur.time<10&&cur.time>0){SFX.tick();}
+  if(cur.time<=0) endGame(false);
+}
+function updateTimer(){
+  const L=cur.L, p=Math.max(0,cur.time/L.time*100);
+  $("timerbar").style.width=p+"%";
+  $("timeleft").textContent=cur.time+"s";
+}
+
+function calcStars(){
+  const ratio=cur.time/cur.L.time;
+  if(ratio>=0.4) return 3;
+  if(ratio>=0.15) return 2;
+  return 1;
+}
+function endGame(win){
+  cur.over=true; clearInterval(cur.timer);
+  const panel=$("resultPanel");
+  if(win){
+    const stars=calcStars();
+    const timeBonus=cur.time*TIME_UNIT;
+    cur.score+=timeBonus;
+    SFX.win();
+    const prev=save["s"+cur.L.n]||0;
+    save["s"+cur.L.n]=Math.max(prev,stars);
+    save.unlock=Math.max(save.unlock,Math.min(10,cur.L.n+1));
+    localStorage.setItem("tm_save",JSON.stringify(save));
+    panel.innerHTML=`<h2>🎉 整理完成！</h2>
+      <div class="stars">${[1,2,3].map(i=>`<span class="${i<=stars?"":"off"}">★</span>`).join("")}</div>
+      <p>含剩余时间奖励 ${timeBonus} 分</p>
+      <p style="font-size:22px;font-weight:800">得分：${cur.score}</p>
+      <button class="bigbtn" onclick="startLevel(${cur.idx})">再来一次</button>
+      <button class="bigbtn ghost" onclick="backMenu()">返回关卡</button>`;
+  }else{
+    SFX.lose();
+    panel.innerHTML=`<h2>⏰ 时间到了</h2>
+      <p>货架还没整理完，再试一次吧！</p>
+      <p style="font-weight:700">得分：${cur.score}</p>
+      <button class="bigbtn" onclick="startLevel(${cur.idx})">重试</button>
+      <button class="bigbtn ghost" onclick="backMenu()">返回关卡</button>`;
+  }
+  $("resultOverlay").classList.remove("hidden");
+}
+function backMenu(){
+  if(cur&&cur.timer) clearInterval(cur.timer);
+  $("game").classList.add("hidden"); $("menu").classList.remove("hidden");
+  $("resultOverlay").classList.add("hidden");
+  buildMenu();
+}
+$("btnQuit").onclick=backMenu;
+$("btnSound").onclick=()=>{muted=!muted;localStorage.setItem("tm_muted",muted?"1":"0");
+  $("btnSound").textContent=muted?"🔇":"🔊";};
+$("btnSound").textContent=muted?"🔇":"🔊";
+
+buildMenu();
+</script>
+</body>
+</html>
